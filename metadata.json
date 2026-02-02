@@ -1,0 +1,7 @@
+{
+  "name": "GeoSnap AI: Automated Georeferencer",
+  "description": "An AI-powered GIS tool that automatically detects grid lines and coordinates on map images to generate georeferencing control points and raster metadata.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
