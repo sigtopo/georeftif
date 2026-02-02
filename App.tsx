@@ -41,23 +41,21 @@ const App: React.FC = () => {
   const [selectedTransform, setSelectedTransform] = useState<TransformationType>(TransformationType.AFFINE);
   const [viewMode, setViewMode] = useState<'IMAGE' | 'MAP'>('IMAGE');
   const [tableState, setTableState] = useState<'HIDDEN' | 'MINIMIZED' | 'EXPANDED'>('HIDDEN');
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(window.innerWidth >= 1024);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<Map | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
 
-  // Responsive sidebar handling
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth < 768) {
+      if (window.innerWidth < 1024) {
         setIsSidebarOpen(false);
       } else {
         setIsSidebarOpen(true);
       }
     };
-    handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -125,28 +123,12 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const downloadGCPFile = () => {
-    if (!result) return;
-    const gcpContent = result.controlPoints
-      .map(p => `${p.pixelX} ${p.pixelY} ${p.lng} ${p.lat}`)
-      .join('\n');
-    
-    const blob = new Blob([gcpContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = "control_points.gcp";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!imageUrl) return;
     setStatus(AppStatus.LOADING);
     setResult(null);
     setError(null);
-    setTableState('HIDDEN');
     
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -155,10 +137,10 @@ const App: React.FC = () => {
       renderImageToCanvas(img);
       setStatus(AppStatus.IDLE);
       setViewMode('IMAGE');
-      if (window.innerWidth < 768) setIsSidebarOpen(false);
+      if (window.innerWidth < 1024) setIsSidebarOpen(false);
     };
     img.onerror = () => {
-      setError("فشل تحميل الصورة. قد يكون السبب سياسة CORS للموقع المصدر.");
+      setError("فشل تحميل الصورة. قد يكون السبب سياسة CORS.");
       setStatus(AppStatus.ERROR);
     };
     img.src = imageUrl;
@@ -170,7 +152,6 @@ const App: React.FC = () => {
     setStatus(AppStatus.LOADING);
     setResult(null);
     setError(null);
-    setTableState('HIDDEN');
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -180,7 +161,7 @@ const App: React.FC = () => {
         renderImageToCanvas(img);
         setStatus(AppStatus.IDLE);
         setViewMode('IMAGE');
-        if (window.innerWidth < 768) setIsSidebarOpen(false);
+        if (window.innerWidth < 1024) setIsSidebarOpen(false);
       };
       img.src = event.target?.result as string;
     };
@@ -291,14 +272,13 @@ const App: React.FC = () => {
 
     map.addLayer(imageLayer);
     map.addLayer(new VectorLayer({ source: vectorSource }));
-    map.getView().fit(extent3857, { padding: [150, 150, 150, 150], duration: 1500 });
+    map.getView().fit(extent3857, { padding: [100, 100, 100, 100], duration: 1500 });
   };
 
   const processGeoreferencing = async () => {
     if (!imgRef.current) return;
     setStatus(AppStatus.PROCESSING);
     setError(null);
-    setTableState('HIDDEN');
 
     try {
       const canvas = document.createElement('canvas');
@@ -326,11 +306,10 @@ const App: React.FC = () => {
       setViewMode('MAP');
       setTableState('MINIMIZED');
       
-      setTimeout(() => updateMapPreview(finalResult), 100);
-      if (window.innerWidth < 768) setIsSidebarOpen(false);
+      setTimeout(() => updateMapPreview(finalResult), 200);
+      if (window.innerWidth < 1024) setIsSidebarOpen(false);
     } catch (err: any) {
-      console.error(err);
-      setError("فشل تحليل الذكاء الاصطناعي. لم يتم التعرف على تقاطعات كافية بدقة.");
+      setError("فشل تحليل الذكاء الاصطناعي. لم يتم التعرف على تقاطعات كافية.");
       setStatus(AppStatus.ERROR);
     }
   };
@@ -342,24 +321,8 @@ const App: React.FC = () => {
     try {
       const zip = new JSZip();
       const { A, B, C, D, E, F } = result.transformation;
-      zip.file("raster_map.jgw", `${A}\n${D}\n${B}\n${E}\n${C}\n${F}`);
-      zip.file("raster_map.prj", PRJ_DEFINITIONS['EPSG:6261']);
-      
-      const gcpText = result.controlPoints.map(p => `${p.pixelX} ${p.pixelY} ${p.lng} ${p.lat}`).join('\n');
-      zip.file("raster_map.gcp", gcpText);
-
-      const geojson = {
-        type: "FeatureCollection",
-        features: [{
-          type: "Feature",
-          properties: { name: "Extent" },
-          geometry: {
-            type: "Polygon",
-            coordinates: [result.controlPoints.map(p => [p.lng, p.lat])]
-          }
-        }]
-      };
-      zip.file("boundary.geojson", JSON.stringify(geojson));
+      zip.file("raster.jgw", `${A}\n${D}\n${B}\n${E}\n${C}\n${F}`);
+      zip.file("raster.prj", PRJ_DEFINITIONS['EPSG:6261']);
       
       const canvas = document.createElement('canvas');
       canvas.width = imgRef.current.width;
@@ -367,13 +330,13 @@ const App: React.FC = () => {
       const ctx = canvas.getContext('2d');
       ctx?.drawImage(imgRef.current, 0, 0);
       const imageData = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
-      zip.file("raster_map.jpg", imageData, { base64: true });
+      zip.file("raster.jpg", imageData, { base64: true });
       
       const content = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(content);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `GeoSnap_GIS_Bundle_${selectedTransform}.zip`;
+      a.download = `GeoSnap_Output.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -381,242 +344,194 @@ const App: React.FC = () => {
       
       setStatus(AppStatus.SUCCESS);
     } catch (err) {
-      setError("حدث خطأ أثناء تجميع الملفات.");
+      setError("حدث خطأ أثناء التجميع.");
       setStatus(AppStatus.ERROR);
     }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#f1f5f9] text-slate-700 overflow-hidden font-['Inter'] relative">
-      {/* HEADER SECTION */}
-      <header className="bg-white px-4 md:px-10 py-3 md:py-5 border-b border-slate-200 flex items-center justify-between z-30 shadow-sm shrink-0">
-        <div className="flex items-center gap-3 md:gap-5">
+    <div className="flex flex-col h-screen bg-[#f1f5f9] text-slate-700 overflow-hidden relative">
+      {/* MOBILE COMPACT HEADER */}
+      <header className="bg-white px-4 lg:px-10 py-3 lg:py-5 border-b border-slate-200 flex items-center justify-between z-30 shadow-sm shrink-0">
+        <div className="flex items-center gap-3 lg:gap-5">
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="md:hidden p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+            className="lg:hidden p-2 rounded-xl bg-slate-50 text-slate-600 hover:bg-slate-100 transition-colors"
+            aria-label="Toggle Sidebar"
           >
-            <i className={`fa-solid ${isSidebarOpen ? 'fa-xmark' : 'fa-bars'} text-xl`}></i>
+            <i className={`fa-solid ${isSidebarOpen ? 'fa-xmark' : 'fa-bars-staggered'} text-xl`}></i>
           </button>
-          <div className="bg-amber-600 p-2 md:p-2.5 rounded-xl md:rounded-2xl shadow-lg shadow-amber-200/50 transform rotate-3">
-            <i className="fa-solid fa-map-location-dot text-lg md:text-2xl text-white"></i>
-          </div>
-          <div className="hidden sm:block">
-            <h1 className="text-xl md:text-2xl font-black tracking-tight text-slate-900 leading-none">GEOSNAP <span className="text-amber-600 italic">AI</span></h1>
-            <p className="text-[8px] md:text-[10px] uppercase font-black text-slate-400 tracking-[0.2em] mt-1 flex items-center gap-2">
-              <span className="w-1.5 md:w-2 h-1.5 md:h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-              نظام الإسناد الآلي EPSG:6261
-            </p>
+          
+          <div className="flex items-center gap-3">
+            <div className="bg-amber-600 p-2 lg:p-2.5 rounded-xl shadow-lg shadow-amber-200/50 transform rotate-3">
+              <i className="fa-solid fa-map-location-dot text-lg lg:text-2xl text-white"></i>
+            </div>
+            <div>
+              <h1 className="text-base lg:text-2xl font-black tracking-tight text-slate-900 leading-none">GEOSNAP AI</h1>
+              <p className="hidden xs:flex text-[8px] lg:text-[10px] uppercase font-black text-slate-400 tracking-[0.2em] mt-1 items-center gap-2">
+                <span className="w-1.5 lg:w-2 h-1.5 lg:h-2 bg-emerald-500 rounded-full"></span>
+                EPSG:6261 Morocco
+              </p>
+            </div>
           </div>
         </div>
         
-        <div className="flex bg-slate-100 p-1 rounded-xl md:rounded-2xl border border-slate-200 scale-90 md:scale-100">
+        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 scale-90 lg:scale-100">
           <button 
-            onClick={() => { setViewMode('IMAGE'); if (window.innerWidth < 768) setIsSidebarOpen(false); }}
-            className={`px-4 md:px-7 py-1.5 md:py-2.5 rounded-lg md:rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${viewMode === 'IMAGE' ? 'bg-white shadow-md text-amber-600' : 'text-slate-500'}`}
+            onClick={() => { setViewMode('IMAGE'); if (window.innerWidth < 1024) setIsSidebarOpen(false); }}
+            className={`px-4 lg:px-7 py-1.5 lg:py-2.5 rounded-lg text-[10px] lg:text-xs font-black uppercase tracking-widest transition-all ${viewMode === 'IMAGE' ? 'bg-white shadow-sm text-amber-600' : 'text-slate-500'}`}
           >
-            <i className="fa-solid fa-file-image"></i> <span className="hidden xs:inline">Raster</span>
+            <i className="fa-solid fa-file-image lg:mr-2"></i> <span className="hidden sm:inline">صورة</span>
           </button>
           <button 
             onClick={() => {
               setViewMode('MAP');
               if (result) setTimeout(() => updateMapPreview(result), 50);
-              if (window.innerWidth < 768) setIsSidebarOpen(false);
+              if (window.innerWidth < 1024) setIsSidebarOpen(false);
             }}
             disabled={!result}
-            className={`px-4 md:px-7 py-1.5 md:py-2.5 rounded-lg md:rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${viewMode === 'MAP' ? 'bg-white shadow-md text-amber-600' : 'text-slate-400 cursor-not-allowed'}`}
+            className={`px-4 lg:px-7 py-1.5 lg:py-2.5 rounded-lg text-[10px] lg:text-xs font-black uppercase tracking-widest transition-all ${viewMode === 'MAP' ? 'bg-white shadow-sm text-amber-600' : 'text-slate-400 cursor-not-allowed'}`}
           >
-            <i className="fa-solid fa-satellite"></i> <span className="hidden xs:inline">Preview</span>
+            <i className="fa-solid fa-satellite lg:mr-2"></i> <span className="hidden sm:inline">خريطة</span>
           </button>
         </div>
       </header>
 
       <main className="flex-1 flex overflow-hidden relative">
-        {/* SIDEBAR NAVIGATION - Responsive */}
+        {/* SIDEBAR - Responsive drawer on mobile */}
         <aside className={`
-          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          fixed md:relative md:translate-x-0
-          w-[280px] sm:w-[350px] md:w-[400px] 
-          h-[calc(100vh-64px)] md:h-full
-          bg-white border-r border-slate-200 p-6 md:p-10 
-          flex flex-col gap-8 md:gap-12 z-40 
-          shadow-2xl md:shadow-none 
+          ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
+          fixed lg:relative top-0 right-0 lg:right-auto
+          w-[280px] sm:w-[320px] lg:w-[400px] 
+          h-full lg:h-full
+          bg-white border-l lg:border-l-0 lg:border-r border-slate-200 p-6 lg:p-10 
+          flex flex-col gap-6 lg:gap-12 z-40 
+          shadow-2xl lg:shadow-none 
           transition-transform duration-300 ease-in-out
           custom-scrollbar overflow-y-auto
         `}>
+          <div className="lg:hidden flex justify-between items-center mb-4">
+             <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest">إعدادات المشروع</h2>
+             <button onClick={() => setIsSidebarOpen(false)} className="text-slate-400"><i className="fa-solid fa-x"></i></button>
+          </div>
+
           <section>
-            <div className="flex items-center gap-4 mb-4 md:mb-6">
-              <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] md:text-xs font-black italic">01</div>
-              <h2 className="text-[10px] md:text-[11px] font-black text-slate-900 uppercase tracking-widest">تحميل الخريطة</h2>
+            <div className="flex items-center gap-4 mb-4 lg:mb-6">
+              <div className="w-7 h-7 lg:w-8 lg:h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] lg:text-xs font-black italic">01</div>
+              <h2 className="text-[10px] lg:text-[11px] font-black text-slate-900 uppercase tracking-widest">استيراد الراستر</h2>
             </div>
-            <div className="space-y-4">
-              <form onSubmit={handleUrlSubmit} className="group">
-                <div className="relative">
-                  <i className="fa-solid fa-link absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                  <input 
-                    type="url" 
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                    placeholder="رابط الصورة (JPG/PNG)..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl md:rounded-2xl pl-12 pr-4 py-3 md:py-4 text-xs font-semibold focus:ring-4 focus:ring-amber-500/10 focus:border-amber-600 outline-none transition-all"
-                  />
-                </div>
-                <button type="submit" className="w-full mt-2 md:mt-3 bg-slate-900 text-white py-3 md:py-4 rounded-xl md:rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all active:scale-95">
-                  جلب من الرابط
-                </button>
+            <div className="space-y-3">
+              <form onSubmit={handleUrlSubmit} className="space-y-2">
+                <input 
+                  type="url" 
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="رابط الخريطة..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-semibold focus:border-amber-600 outline-none transition-all"
+                />
+                <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all">جلب الرابط</button>
               </form>
-              <div className="relative group">
-                <input type="file" onChange={handleFileUpload} accept="image/*" id="file-upload" className="hidden" />
-                <label htmlFor="file-upload" className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl md:rounded-[2.5rem] p-6 md:p-10 cursor-pointer hover:border-amber-500 hover:bg-amber-50/20 transition-all">
-                  <div className="w-12 h-12 md:w-16 md:h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3 md:mb-4 group-hover:bg-amber-100 transition-colors">
-                    <i className="fa-solid fa-upload text-xl md:text-2xl text-slate-300 group-hover:text-amber-600"></i>
-                  </div>
-                  <span className="text-[8px] md:text-[10px] font-black text-slate-400 group-hover:text-amber-700 uppercase tracking-widest">رفع ملف محلي</span>
+              <div className="relative">
+                <input type="file" onChange={handleFileUpload} accept="image/*" id="file-up" className="hidden" />
+                <label htmlFor="file-up" className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 lg:p-10 cursor-pointer hover:border-amber-500 hover:bg-amber-50/20 transition-all text-center">
+                  <i className="fa-solid fa-cloud-arrow-up text-2xl text-slate-300 mb-2"></i>
+                  <span className="text-[9px] lg:text-[10px] font-black text-slate-400 uppercase tracking-widest">تحميل من الجهاز</span>
                 </label>
               </div>
             </div>
           </section>
 
           <section>
-            <div className="flex items-center gap-4 mb-4 md:mb-6">
-              <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] md:text-xs font-black italic">02</div>
-              <h2 className="text-[10px] md:text-[11px] font-black text-slate-900 uppercase tracking-widest">إعدادات المعالجة</h2>
+            <div className="flex items-center gap-4 mb-4 lg:mb-6">
+              <div className="w-7 h-7 lg:w-8 lg:h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] lg:text-xs font-black italic">02</div>
+              <h2 className="text-[10px] lg:text-[11px] font-black text-slate-900 uppercase tracking-widest">المحرك الجيوديسي</h2>
             </div>
-            <div className="bg-slate-50 rounded-2xl md:rounded-[2.5rem] border border-slate-100 p-6 md:p-8 space-y-6 md:space-y-8">
-              <div className="flex flex-col gap-2 md:gap-3">
-                <label className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">خوارزمية التحويل</label>
+            <div className="bg-slate-50 rounded-2xl p-5 lg:p-8 space-y-4">
+              <div className="space-y-2">
+                <label className="text-[9px] lg:text-[10px] font-black text-slate-400 uppercase tracking-widest">نوع التحويل</label>
                 <select 
                   value={selectedTransform}
                   onChange={(e) => setSelectedTransform(e.target.value as TransformationType)}
-                  className="w-full bg-white border border-slate-200 rounded-xl p-3 md:p-4 text-xs font-black text-slate-800 outline-none focus:ring-4 focus:ring-amber-500/10 cursor-pointer transition-all appearance-none"
+                  className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs font-black text-slate-800 outline-none"
                 >
-                  <option value={TransformationType.AFFINE}>Affine (تحجيم وتدوير)</option>
-                  <option value={TransformationType.HELMERT}>Helmert (تطابق)</option>
-                  <option value={TransformationType.PROJECTIVE}>Projective (إسقاطي)</option>
+                  <option value={TransformationType.AFFINE}>Affine (6-Param)</option>
+                  <option value={TransformationType.HELMERT}>Helmert (Conformal)</option>
                 </select>
               </div>
-              <div className="pt-4 md:pt-6 border-t border-slate-200/50 flex items-center justify-between">
+              <div className="pt-4 border-t border-slate-200/50 flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] md:text-[11px] font-black text-slate-900">Merchich GCS</p>
-                  <p className="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase mt-1">المغرب - EPSG:6261</p>
+                  <p className="text-[10px] font-black text-slate-900 leading-none">Merchich GCS</p>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">EPSG:6261 Morocco</p>
                 </div>
-                <i className="fa-solid fa-earth-africa text-amber-600 text-lg md:text-xl"></i>
+                <i className="fa-solid fa-earth-africa text-amber-600"></i>
               </div>
             </div>
           </section>
 
-          <div className="mt-auto space-y-4 md:space-y-5">
+          <div className="mt-auto space-y-4">
             <button 
               onClick={processGeoreferencing}
               disabled={!imgRef.current || status === AppStatus.PROCESSING}
-              className={`w-full py-5 md:py-7 rounded-xl md:rounded-[2rem] font-black text-[10px] md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] shadow-xl transition-all ${
-                !imgRef.current 
-                  ? 'bg-slate-100 text-slate-300 cursor-not-allowed' 
-                  : 'bg-amber-600 text-white hover:bg-amber-700 hover:-translate-y-1 shadow-amber-600/20 active:translate-y-0'
+              className={`w-full py-5 lg:py-7 rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-[0.2em] shadow-xl transition-all ${
+                !imgRef.current ? 'bg-slate-100 text-slate-300' : 'bg-amber-600 text-white hover:bg-amber-700 shadow-amber-600/20'
               }`}
             >
-              {status === AppStatus.PROCESSING ? (
-                <><i className="fa-solid fa-spinner fa-spin mr-2 md:mr-3"></i> جاري التعرف...</>
-              ) : (
-                <><i className="fa-solid fa-wand-magic-sparkles mr-2 md:mr-3"></i> إسناد جغرافي آلي</>
-              )}
+              {status === AppStatus.PROCESSING ? 'جاري التحليل...' : 'إسناد آلي بالذكاء الاصطناعي'}
             </button>
 
             {result && (
-              <div className="flex flex-col gap-2 md:gap-3">
-                <button 
-                  onClick={downloadGisBundle}
-                  className="w-full bg-slate-900 text-white py-3 md:py-4 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95"
-                >
-                  <i className="fa-solid fa-file-zipper text-amber-500"></i>
-                  تصدير حزمة GIS الكاملة
-                </button>
-                <div className="grid grid-cols-2 gap-2 md:gap-3">
-                  <button 
-                    onClick={downloadGCPFile}
-                    className="bg-slate-100 text-slate-700 py-2 md:py-3 rounded-xl md:rounded-2xl text-[8px] md:text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
-                  >
-                    <i className="fa-solid fa-file-code"></i> GCP
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (result) {
-                        const geojson = {
-                          type: "FeatureCollection",
-                          features: [{
-                            type: "Feature",
-                            properties: { name: "Boundary" },
-                            geometry: { type: "Polygon", coordinates: [result.controlPoints.map(p => [p.lng, p.lat])] }
-                          }]
-                        };
-                        const blob = new Blob([JSON.stringify(geojson)], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a'); a.href = url; a.download = "boundary.geojson"; a.click();
-                      }
-                    }}
-                    className="bg-slate-100 text-slate-700 py-2 md:py-3 rounded-xl md:rounded-2xl text-[8px] md:text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
-                  >
-                    <i className="fa-solid fa-vector-square"></i> GeoJSON
-                  </button>
-                </div>
-              </div>
+              <button 
+                onClick={downloadGisBundle}
+                className="w-full bg-slate-900 text-white py-4 lg:py-5 rounded-2xl text-[9px] lg:text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3"
+              >
+                <i className="fa-solid fa-download"></i> تصدير حزمة GIS
+              </button>
             )}
-            
-            <div className="flex justify-center gap-4 pt-4 border-t border-slate-100">
-               <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-slate-300 hover:text-slate-900 transition-colors">
-                 <i className="fa-brands fa-github text-xl"></i>
-               </a>
-               <a href="https://vercel.com" target="_blank" rel="noopener noreferrer" className="text-slate-300 hover:text-blue-500 transition-colors">
-                 <i className="fa-solid fa-triangle-exclamation text-xl"></i>
-               </a>
+
+            <div className="flex justify-center items-center gap-6 pt-6 border-t border-slate-100">
+               <a href="https://github.com" target="_blank" className="text-slate-300 hover:text-slate-900 transition-colors"><i className="fa-brands fa-github text-xl"></i></a>
+               <a href="https://vercel.com" target="_blank" className="text-slate-300 hover:text-blue-500 transition-colors"><i className="fa-solid fa-triangle-exclamation text-xl"></i></a>
             </div>
           </div>
         </aside>
 
         {/* OVERLAY FOR MOBILE SIDEBAR */}
         {isSidebarOpen && (
-          <div 
-            onClick={() => setIsSidebarOpen(false)} 
-            className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30"
-          ></div>
+          <div onClick={() => setIsSidebarOpen(false)} className="lg:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30"></div>
         )}
 
         <section className="flex-1 relative overflow-hidden bg-slate-200 flex flex-col">
           <div className="flex-1 relative">
-            <div className={`absolute inset-0 flex items-center justify-center p-4 md:p-16 transition-all duration-1000 ease-in-out ${viewMode === 'IMAGE' ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
-               <div className="relative shadow-2xl rounded-2xl md:rounded-[3rem] overflow-hidden border-8 md:border-[16px] border-white bg-white max-h-full">
-                 <canvas ref={canvasRef} className="max-w-full max-h-full block rounded-lg md:rounded-2xl" />
+            <div className={`absolute inset-0 flex items-center justify-center p-4 lg:p-16 transition-all duration-1000 ${viewMode === 'IMAGE' ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
+               <div className="relative shadow-2xl rounded-2xl lg:rounded-[3rem] overflow-hidden border-4 lg:border-[16px] border-white bg-white max-h-full">
+                 <canvas ref={canvasRef} className="max-w-full max-h-full block" />
                  {!imgRef.current && (
-                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50/80 backdrop-blur-md p-6 md:p-16 text-center">
-                     <div className="w-24 h-24 md:w-32 md:h-32 bg-white rounded-full shadow-2xl flex items-center justify-center mb-6 md:mb-10">
-                        <i className="fa-solid fa-map-marked-alt text-4xl md:text-6xl text-slate-200"></i>
-                     </div>
-                     <h3 className="text-xl md:text-3xl font-black text-slate-900 mb-4 md:mb-6 tracking-tight uppercase italic">لا توجد خريطة</h3>
-                     <p className="text-slate-400 text-[10px] md:text-base font-medium max-w-sm uppercase tracking-tighter">ارفع خريطة طبوغرافية للمغرب لتفعيل محرك الذكاء الاصطناعي.</p>
+                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50/80 backdrop-blur-md p-6 lg:p-16 text-center">
+                     <i className="fa-solid fa-map-marked-alt text-4xl lg:text-6xl text-slate-200 mb-6"></i>
+                     <h3 className="text-lg lg:text-3xl font-black text-slate-900 mb-4 tracking-tight uppercase">بانتظار الخريطة</h3>
+                     <p className="text-slate-400 text-[10px] lg:text-base font-medium max-w-sm uppercase">ارفع خريطة طبوغرافية للمغرب لتفعيل محرك الذكاء الاصطناعي.</p>
                    </div>
                  )}
                </div>
             </div>
 
-            <div 
-              ref={mapRef} 
-              className={`absolute inset-0 transition-all duration-1000 ease-in-out ${viewMode === 'MAP' ? 'opacity-100 scale-100' : 'opacity-0 scale-110 pointer-events-none'}`}
-            />
+            <div ref={mapRef} className={`absolute inset-0 transition-all duration-1000 ${viewMode === 'MAP' ? 'opacity-100 scale-100' : 'opacity-0 scale-110 pointer-events-none'}`} />
 
             {status === AppStatus.PROCESSING && (
-              <div className="absolute inset-0 bg-white/90 backdrop-blur-3xl z-50 flex items-center justify-center p-8">
-                <div className="flex flex-col items-center text-center max-w-sm">
-                  <div className="relative w-24 h-24 md:w-40 md:h-40 mb-8 md:mb-14">
-                     <div className="absolute inset-0 border-8 md:border-[12px] border-slate-100 rounded-full"></div>
-                     <div className="absolute inset-0 border-8 md:border-[12px] border-amber-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="absolute inset-0 bg-white/95 backdrop-blur-3xl z-50 flex items-center justify-center p-8">
+                <div className="flex flex-col items-center text-center max-w-xs">
+                  <div className="relative w-24 lg:w-40 h-24 lg:h-40 mb-10">
+                     <div className="absolute inset-0 border-8 lg:border-[12px] border-slate-100 rounded-full"></div>
+                     <div className="absolute inset-0 border-8 lg:border-[12px] border-amber-600 border-t-transparent rounded-full animate-spin"></div>
                      <div className="absolute inset-0 flex items-center justify-center">
-                        <i className="fa-solid fa-microscope text-3xl md:text-5xl text-amber-600 animate-pulse"></i>
+                        <i className="fa-solid fa-microscope text-3xl lg:text-5xl text-amber-600 animate-pulse"></i>
                      </div>
                   </div>
-                  <h2 className="text-2xl md:text-4xl font-black mb-4 md:mb-6 tracking-tighter uppercase italic text-slate-900">معايرة الشبكة</h2>
-                  <p className="text-slate-400 text-[10px] md:text-sm font-semibold mb-8 md:mb-14 uppercase tracking-[0.1em] md:tracking-[0.2em] italic leading-relaxed opacity-80">
-                    جاري تحليل تقاطعات خطوط الطول والعرض ومطابقتها مع نظام Merchich...
+                  <h2 className="text-2xl lg:text-4xl font-black mb-4 tracking-tighter uppercase italic text-slate-900">معايرة ذكية</h2>
+                  <p className="text-slate-400 text-[10px] lg:text-sm font-semibold mb-10 uppercase tracking-[0.1em] leading-relaxed">
+                    جاري مطابقة تقاطعات الشبكة مع الإحداثيات الجغرافية...
                   </p>
-                  <div className="w-full h-3 md:h-4 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                  <div className="w-full h-3 lg:h-4 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
                      <div className="h-full bg-amber-600 w-full animate-[progress_3s_infinite_linear]"></div>
                   </div>
                 </div>
@@ -624,54 +539,44 @@ const App: React.FC = () => {
             )}
           </div>
 
-          {/* GCP DATA TABLE PANEL - Responsive */}
+          {/* DATA PANEL */}
           {result && tableState !== 'HIDDEN' && (
-            <div className={`bg-white border-t border-slate-200 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] transition-all duration-500 z-40 flex flex-col ${tableState === 'EXPANDED' ? 'h-[60vh] md:h-[400px]' : 'h-[60px]'}`}>
-              <div className="px-4 md:px-6 h-[60px] flex items-center justify-between bg-slate-50/80 backdrop-blur shrink-0">
-                <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-                  <i className="fa-solid fa-table-list text-amber-600 shrink-0"></i>
-                  <h3 className="text-[10px] md:text-xs font-black uppercase tracking-widest truncate">سجل نقاط التحكم (GCP)</h3>
-                  <span className="hidden xs:inline-block text-[8px] md:text-[10px] font-bold bg-amber-100 text-amber-700 px-2 md:px-3 py-1 rounded-full whitespace-nowrap">{result.controlPoints.length} نقطة</span>
+            <div className={`bg-white border-t border-slate-200 shadow-2xl transition-all duration-500 z-40 flex flex-col ${tableState === 'EXPANDED' ? 'h-[60vh] lg:h-[400px]' : 'h-[60px]'}`}>
+              <div className="px-4 lg:px-6 h-[60px] flex items-center justify-between bg-slate-50/80 backdrop-blur shrink-0">
+                <div className="flex items-center gap-4 overflow-hidden">
+                  <i className="fa-solid fa-table-list text-amber-600"></i>
+                  <h3 className="text-[10px] lg:text-xs font-black uppercase tracking-widest truncate">نقاط التحكم (GCP)</h3>
+                  <span className="hidden xs:inline-block text-[8px] lg:text-[10px] font-bold bg-amber-100 text-amber-700 px-3 py-1 rounded-full">{result.controlPoints.length} نقطة</span>
                 </div>
-                <div className="flex items-center gap-1 md:gap-2">
-                  {tableState === 'MINIMIZED' ? (
-                    <button onClick={() => setTableState('EXPANDED')} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 transition-colors">
-                      <i className="fa-solid fa-chevron-up"></i>
-                    </button>
-                  ) : (
-                    <button onClick={() => setTableState('MINIMIZED')} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 transition-colors">
-                      <i className="fa-solid fa-chevron-down"></i>
-                    </button>
-                  )}
-                  <button onClick={() => setTableState('HIDDEN')} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-100 text-red-500 transition-colors">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setTableState(tableState === 'EXPANDED' ? 'MINIMIZED' : 'EXPANDED')} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 transition-colors">
+                    <i className={`fa-solid ${tableState === 'EXPANDED' ? 'fa-chevron-down' : 'fa-chevron-up'}`}></i>
+                  </button>
+                  <button onClick={() => setTableState('HIDDEN')} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-red-500 transition-colors">
                     <i className="fa-solid fa-xmark"></i>
                   </button>
                 </div>
               </div>
               
-              <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar">
-                <table className="w-full text-left text-[10px] md:text-xs min-w-[600px]">
+              <div className="flex-1 overflow-auto custom-scrollbar">
+                <table className="w-full text-right text-[10px] lg:text-xs min-w-[500px]">
                   <thead className="sticky top-0 bg-white z-10 shadow-sm">
                     <tr>
-                      <th className="px-4 md:px-6 py-3 md:py-4 font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">ID</th>
-                      <th className="px-4 md:px-6 py-3 md:py-4 font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Pixel Pos</th>
-                      <th className="px-4 md:px-6 py-3 md:py-4 font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Longitude</th>
-                      <th className="px-4 md:px-6 py-3 md:py-4 font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Latitude</th>
-                      <th className="px-4 md:px-6 py-3 md:py-4 font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Status</th>
+                      <th className="px-6 py-4 font-black text-slate-400 uppercase border-b border-slate-100">ID</th>
+                      <th className="px-6 py-4 font-black text-slate-400 uppercase border-b border-slate-100">بكسل</th>
+                      <th className="px-6 py-4 font-black text-slate-400 uppercase border-b border-slate-100">خط الطول</th>
+                      <th className="px-6 py-4 font-black text-slate-400 uppercase border-b border-slate-100">خط العرض</th>
+                      <th className="px-6 py-4 font-black text-slate-400 uppercase border-b border-slate-100">الحالة</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {result.controlPoints.map((cp) => (
-                      <tr key={cp.id} className="hover:bg-amber-50/30 transition-colors group">
-                        <td className="px-4 md:px-6 py-3 md:py-4 font-black text-slate-900">{cp.id}</td>
-                        <td className="px-4 md:px-6 py-3 md:py-4 font-mono text-slate-500">{Math.round(cp.pixelX)},{Math.round(cp.pixelY)}</td>
-                        <td className="px-4 md:px-6 py-3 md:py-4 font-mono font-bold text-slate-700">{cp.lng.toFixed(6)}°</td>
-                        <td className="px-4 md:px-6 py-3 md:py-4 font-mono font-bold text-slate-700">{cp.lat.toFixed(6)}°</td>
-                        <td className="px-4 md:px-6 py-3 md:py-4">
-                          <span className="flex items-center gap-2 text-emerald-600 font-black text-[8px] md:text-[10px] uppercase">
-                            <i className="fa-solid fa-check-double text-[6px] md:text-[8px]"></i> Calibrated
-                          </span>
-                        </td>
+                      <tr key={cp.id} className="hover:bg-amber-50/30 transition-colors">
+                        <td className="px-6 py-4 font-black text-slate-900">{cp.id}</td>
+                        <td className="px-6 py-4 font-mono text-slate-500">{Math.round(cp.pixelX)},{Math.round(cp.pixelY)}</td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-700">{cp.lng.toFixed(6)}°</td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-700">{cp.lat.toFixed(6)}°</td>
+                        <td className="px-6 py-4 text-emerald-600 font-black text-[9px]">CALIBRATED</td>
                       </tr>
                     ))}
                   </tbody>
@@ -682,25 +587,20 @@ const App: React.FC = () => {
         </section>
       </main>
 
-      <footer className="hidden md:flex bg-white border-t border-slate-200 px-10 py-3 justify-between items-center text-[8px] md:text-[10px] text-slate-400 font-black uppercase tracking-[0.4em] z-30 shrink-0">
+      {/* FOOTER - Hidden on mobile */}
+      <footer className="hidden lg:flex bg-white border-t border-slate-200 px-10 py-3 justify-between items-center text-[10px] text-slate-400 font-black uppercase tracking-[0.4em] z-30 shrink-0">
         <div className="flex gap-12 items-center">
           <span className="flex items-center gap-3 text-amber-600"><i className="fa-solid fa-circle-check"></i> Merchich GCS EPSG:6261 Active</span>
-          <span className="text-slate-300">© 2025 GEOSNAP AI - AUTOMATED GEOREFERENCING</span>
+          <span className="text-slate-300">© 2025 GEOSNAP AI - MOROCCO ENGINE</span>
         </div>
         <div className="flex gap-4">
-          <span className="text-slate-500 bg-slate-100 px-3 py-1 rounded-full">v2.5 Full Responsive</span>
+          <span className="text-slate-500 bg-slate-100 px-3 py-1 rounded-full">Deployment Status: Live</span>
         </div>
       </footer>
       
       <style>{`
-        @keyframes progress {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-        @media (max-width: 400px) {
-          .xs\\:inline { display: inline; }
-          .xs\\:hidden { display: none; }
-        }
+        @keyframes progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+        @media (max-width: 640px) { .xs\\:flex { display: flex; } .xs\\:hidden { display: none; } }
       `}</style>
     </div>
   );

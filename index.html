@@ -1,28 +1,70 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GeoSnap AI - Automated Georeferencing</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GeoSnap AI - Morocco Automated Georeferencing</title>
+  
+  <!-- PWA & Mobile Meta -->
+  <meta name="theme-color" content="#d97706">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/854/854878.png">
+
+  <!-- Social Meta Tags for GitHub/Vercel -->
+  <meta name="description" content="AI-powered Automated Georeferencing for Moroccan Topographic Maps. EPSG:6261 Merchich Engine.">
+  <meta property="og:title" content="GeoSnap AI - Morocco GIS Engine">
+  <meta property="og:description" content="Transform topographic rasters into georeferenced GIS data automatically using AI.">
+  <meta property="og:image" content="https://cdn-icons-png.flaticon.com/512/854/854878.png">
+  <meta name="twitter:card" content="summary_large_image">
+
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v10.3.1/ol.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.15.0/proj4.js"></script>
+  
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
-    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Noto+Kufi+Arabic:wght@400;700;900&display=swap');
+    
+    :root {
+      --primary: #ea580c;
+    }
+
+    body { 
+      font-family: 'Inter', 'Noto Kufi Arabic', sans-serif; 
+      background-color: #f8fafc; 
+      color: #1e293b;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     
-    .ol-control { background: rgba(255, 255, 255, 0.9) !important; padding: 6px !important; border-radius: 16px !important; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1) !important; border: 1px solid #f1f5f9 !important; }
-    .ol-control button { background: #ffffff !important; color: #475569 !important; font-weight: 800 !important; border-radius: 10px !important; margin: 3px !important; border: 1px solid #e2e8f0 !important; font-size: 14px !important; width: 32px !important; height: 32px !important; }
-    .ol-control button:hover { background: #f59e0b !important; color: white !important; border-color: #f59e0b !important; }
-    
-    .glass-sidebar { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(20px); }
+    .ol-control { 
+      background: rgba(255, 255, 255, 0.95) !important; 
+      padding: 4px !important; 
+      border-radius: 12px !important; 
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1) !important; 
+    }
+    .ol-control button { 
+      background: #ffffff !important; 
+      color: #475569 !important; 
+      border-radius: 8px !important; 
+      margin: 2px !important; 
+      font-size: 16px !important; 
+      width: 36px !important; 
+      height: 36px !important;
+      border: 1px solid #f1f5f9 !important;
+    }
+    .ol-control button:hover { background: var(--primary) !important; color: white !important; }
+
+    /* Fix for mobile Safari height */
+    .h-screen { height: 100dvh; }
   </style>
+
 <script type="importmap">
 {
   "imports": {
