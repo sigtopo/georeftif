@@ -26,8 +26,9 @@ export const analyzeMapImage = async (base64Image: string, mimeType: string): Pr
     Look for the specific junction where lines cross.
   `;
 
+  // Use gemini-3-pro-preview for complex reasoning and precise vision tasks
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-3-pro-preview',
     contents: {
       parts: [
         { inlineData: { data: base64Image, mimeType } },
